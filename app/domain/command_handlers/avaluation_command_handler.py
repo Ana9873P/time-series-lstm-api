@@ -1,4 +1,5 @@
 from app.domain.services.avaluation_model_service import executar_previsao, obtemX_para_um_dia, obtemX_testeY_teste_Janela_Deslisante
+from fastapi import HTTPException
 from app.schemas.ticker_request import TickerRequestBetweenDates, TickerRequest
 
 
@@ -22,12 +23,15 @@ def process_ticker(command: TickerRequestBetweenDates, model) -> dict:
 
 
 def process_ticker_single_day(command: TickerRequest, model) -> dict:
-    
-    X_test, scaler = obtemX_para_um_dia(command.ticker, command.target_date)
+
+    X_test, scaler, error = obtemX_para_um_dia(command.ticker, command.target_date)
+
+    if error is not None: raise HTTPException(status_code=422, detail=error)
 
     test_predictions_norm, error = executar_previsao(model, X_test)
 
-    if error: return error
+    if error is not None:
+        return error
 
     # Inverte transformação
     pred = scaler.inverse_transform(test_predictions_norm)

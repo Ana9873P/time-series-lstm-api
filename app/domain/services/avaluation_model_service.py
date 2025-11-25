@@ -135,7 +135,8 @@ def obtemX_para_um_dia(ticker, target_date):
 
     data = data.to_numpy()
     if data.shape[0] < SEQ_LENGTH:
-        raise ValueError(f"Dados históricos insuficientes: {data.shape[0]} linhas (precisa de {SEQ_LENGTH})")
+        # Retornar erro amigável em vez de lançar exceção
+        return None, None, {"error": f"Dados históricos insuficientes: {data.shape[0]} linhas (precisa de {SEQ_LENGTH})"}
 
     # Pega as últimas SEQ_LENGTH observações disponíveis (mais recente primeiro)
     seq = data[-SEQ_LENGTH:, :]
@@ -151,7 +152,7 @@ def obtemX_para_um_dia(ticker, target_date):
 
     X_test = torch.from_numpy(X_norm).float().to(DEVICE).unsqueeze(-1)
 
-    return X_test, scaler
+    return X_test, scaler, None
 
 def executar_previsao(model, dados_tensor):
     """
