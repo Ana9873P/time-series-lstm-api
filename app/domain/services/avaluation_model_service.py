@@ -79,42 +79,82 @@ def build_features_estrategia2(data):
 
 
 def obtemX_testeY_teste_Janela_Deslisante(ticker, data_inicial, data_final):
-    # Obtendo dados de validação
-    data = obtemDadosHistoricos(ticker, data_inicial, data_final)
-    data = build_features_estrategia2(data)
+    # 1. Converter string para data real
+    dt_inicial = pd.to_datetime(data_inicial)
+    
+    # 2. Calcular o "Buffer" de segurança.
+    # Precisamos de 30 dias ÚTEIS para trás. 
+    # Como existem fins de semana, pegamos 60 dias corridos para garantir que sobe.
+    buffer_dias = SEQ_LENGTH * 2 
+    dt_fetch_start = dt_inicial - pd.Timedelta(days=buffer_dias)
+    
+    # 3. Baixar dados com margem extra
+    print(f"Buscando dados históricos desde {dt_fetch_start.date()} para preencher a janela...")
+    dados_brutos = obtemDadosHistoricos(ticker, dt_fetch_start, data_final)
+    
+    # 4. Encontrar onde começa a data que o usuário pediu
+    # O dataframe tem datas no índice. Vamos filtrar para garantir o corte exato.
+    # Precisamos garantir que temos exatos SEQ_LENGTH dias ANTES da data_inicial.
+    
+    # Resetar index para facilitar manipulação se o indice for data
+    if isinstance(dados_brutos.index, pd.DatetimeIndex):
+        dados_brutos = dados_brutos.reset_index()
+        
+    # Localizar o índice da primeira data >= data_inicial
+    # Coluna 'Date' geralmente é criada pelo reset_index ou yfinance
+    mask_start = dados_brutos.iloc[:, 0] >= dt_inicial # Assume data na col 0
+    if not mask_start.any():
+         raise ValueError("Data inicial não encontrada nos dados baixados.")
+         
+    idx_start_user = mask_start.idxmax() # Primeiro índice True
+    
+    # O corte deve começar SEQ_LENGTH posições antes desse índice
+    idx_corte = idx_start_user - SEQ_LENGTH
+    
+    if idx_corte < 0:
+        # Se não tiver dados suficientes no passado (ex: IPO recente), avisa
+        print("AVISO: Histórico insuficiente para cobrir a janela completa antes da data inicial.")
+        idx_corte = 0
+
+    # Cortamos o dataframe para começar exatamente onde precisamos
+    dados_validos = dados_brutos.iloc[idx_corte:]
+    
+    # Voltamos o indice para data se necessário, ou apenas pegamos as features
+    # (Seu código espera que build_features receba o DF original do yfinance)
+    # Como manipulei o índice, vou reconstruir o DF padrão para manter compatibilidade
+    dados_validos = dados_validos.set_index(dados_validos.columns[0])
+    
+    data = build_features_estrategia2(dados_validos)
 
     # Construindo a janela deslizante
-    data = data.to_numpy()
-    X, y = create_sequences_multivariate(data, SEQ_LENGTH)
+    data_np = data.to_numpy()
+    
+    # Verificação de segurança
+    if len(data_np) <= SEQ_LENGTH:
+         raise ValueError(f"Dados insuficientes ({len(data_np)}) para janela de {SEQ_LENGTH}.")
 
-    print("\n")
-    print(f'X.shape: {X.shape}, y.shape: {y.shape}')
+    X, y = create_sequences_multivariate(data_np, SEQ_LENGTH)
 
+    print(f'X.shape original: {X.shape}, y.shape original: {y.shape}')
+
+    # --- O RESTO SEGUE IGUAL AO SEU CÓDIGO ---
     X_test_reshaped = X.reshape(-1, 1)
-    y_test_reshaped = y.reshape(-1, 1)
-
-    print(f'X_test_reshaped.shape: {X_test_reshaped.shape}, y_test_reshaped.shape: {y_test_reshaped.shape}')
-
-    # Normalização dos dados de validação
+    
+    # Atenção aqui: o scaler deve ser fitado em X ou y? 
+    # Geralmente fitamos no treino e usamos no teste. 
+    # Se você está fitando no teste, está vazando informação, mas vou manter sua lógica.
     scaler = MinMaxScaler(feature_range=(-1, 1))
-
-    # Fit nos dados de validação
     scaler.fit(X_test_reshaped)
 
-    # Normalizando dados de validacao
     X_test_norm = scaler.transform(X_test_reshaped).reshape(X.shape)
     y_test_norm = scaler.transform(y.reshape(-1, 1))
 
-    print(f'X_test_norm.shape: {X_test_norm.shape}, y_test_norm.shape: {y_test_norm.shape}')
-
-    # Convertendo para tensores do PyTorch
+    # Convertendo para tensores
     X_test = torch.from_numpy(X_test_norm).float().to(DEVICE).unsqueeze(-1)
     y_test = torch.from_numpy(y_test_norm).float().to(DEVICE).unsqueeze(1)
 
-    print(f'X_test.shape: {X_test.shape}, y_test.shape: {y_test.shape}')
-
-    # Retornamos também o scaler usado para normalização, pois é necessário
-    # para inverter a normalização das previsões e dos valores reais.
+    print(f'Final -> X_test: {X_test.shape} (Esperado ~43 dias)')
+    
     return (X_test, y_test, scaler)
 
 
