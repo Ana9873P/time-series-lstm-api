@@ -22,7 +22,7 @@ async def lifespan(app: FastAPI):
 
     yield 
 
-app = FastAPI(lifespan=lifespan, title="Augusto API TECH39")
+app = FastAPI(lifespan=lifespan, title="Tech Challenge 4")
 
 # Incluir rotas
 app.include_router(api_router.router, prefix="/api", tags=["Predictions"])

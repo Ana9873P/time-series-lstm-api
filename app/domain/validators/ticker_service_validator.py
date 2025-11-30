@@ -2,7 +2,7 @@ from datetime import timedelta
 import yfinance as yf
 from functools import wraps, lru_cache
 from fastapi import HTTPException
-from datetime import datetime, date
+from datetime import date
 
 # 1. Função auxiliar com CACHE. 
 # O Python lembrará dos últimos 1024 tickers verificados para não travar a API.

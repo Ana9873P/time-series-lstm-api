@@ -63,8 +63,6 @@ Dicas:
             aws ecr get-login-password --region us-east-1 \
             | docker login --username AWS --password-stdin <ECR_URL>
 
-Isso pode evitar erros durante o processo.
-
 Se você estiver no **Windows** ou Linux (x86_64), execute:
 
             docker build -t fastapi-example .
@@ -83,14 +81,10 @@ Necessário para evitar o erro
 exec format error
 (porque o Fargate só roda imagens AMD64)
 
-### Passo 4 (Opcional): Verifique se o docker subiu a imagem:
-
-            docker images | grep fastapi-example
-
-### Passo 5 (Último passo): Acessar
+### Passo 4 (Último passo): Acessar
 
 No Console AWS: Console AWS > ECS > Clusters > fastapi-cluster > Services > fastapi-service > Tasks > (selecionar task) > Network Interfaces → Public IP
 
 http:<Public_IP>:8000/docs
 
-Exemplo. 44.197.238.120:8000/docs
+Exemplo. 13.219.86.170:8000/docs

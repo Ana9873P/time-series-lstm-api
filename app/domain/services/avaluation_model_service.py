@@ -8,6 +8,7 @@ from sklearn.preprocessing import MinMaxScaler
 import yfinance as yf
 import traceback
 from app.schemas.ticker_request import TickerRequestBetweenDates, TickerRequest
+from typing import Tuple, List
 
 SEQ_LENGTH = 30
 DEVICE = "cpu"
@@ -79,9 +80,11 @@ def build_features_estrategia2(data):
     return data[columns]
 
 
-def obtemX_testeY_teste_Janela_Deslisante(command: TickerRequestBetweenDates):
+def getX_testY_test_Sliding_Window(command: TickerRequestBetweenDates):
     # 1. Converter string para data real
     dt_inicial = pd.to_datetime(command.init_date)
+
+    print(f"Inicio: {command.init_date} fim em: {command.end_date}")
     
     # 2. Calcular o "Buffer" de segurança.
     # Precisamos de 30 dias ÚTEIS para trás. 
@@ -90,9 +93,20 @@ def obtemX_testeY_teste_Janela_Deslisante(command: TickerRequestBetweenDates):
     dt_fetch_start = dt_inicial - pd.Timedelta(days=buffer_dias)
     
     # 3. Baixar dados com margem extra
-    print(f"Buscando dados históricos desde {dt_fetch_start.date()} para preencher a janela...")
-    dados_brutos = obtemDadosHistoricos(command.ticker, dt_fetch_start, command.end_date)
+    # print(f"Buscando dados históricos desde {dt_fetch_start.date()} para preencher a janela...")
+    # dados_brutos = obtemDadosHistoricos(command.ticker, dt_fetch_start, command.end_date)
     
+    end_date_adjusted = pd.to_datetime(command.end_date) + pd.Timedelta(days=1)
+    
+    print(f"Buscando dados históricos até {end_date_adjusted.date()} (Ajustado)...")
+    
+    # Use a data ajustada na busca
+    dados_brutos = obtemDadosHistoricos(
+        command.ticker, 
+        dt_fetch_start, 
+        end_date_adjusted.strftime('%Y-%m-%d') # Converte para string iso
+    )
+
     # 4. Encontrar onde começa a data que o usuário pediu
     # O dataframe tem datas no índice. Vamos filtrar para garantir o corte exato.
     # Precisamos garantir que temos exatos SEQ_LENGTH dias ANTES da data_inicial.
@@ -167,68 +181,73 @@ def obtemX_testeY_teste_Janela_Deslisante(command: TickerRequestBetweenDates):
     return (X_test, y_test, scaler, datas_y)
 
 
+# app/domain/services/avaluation_model_service.py
+
 def obtemX_para_um_dia(command: TickerRequest):
     """
-    Retorna: (X_test_tensor, scaler, actual_price, error)
-    actual_price: float ou None (se o dia ainda não fechou)
+    Versão corrigida usando comparação de strings para garantir match da data.
     """
-    target_dt = pd.to_datetime(command.target_date)
+    target_dt = pd.to_datetime(command.target_date).normalize()
+    target_str = target_dt.strftime('%Y-%m-%d') # Chave de busca em String
     
-    # 1. Ajuste de datas para busca
-    # Buscamos até target_date + 1 dia para garantir que o dia alvo venha no download (se já passou)
-    end_fetch = target_dt + pd.Timedelta(days=1)
-    start_fetch = target_dt - pd.Timedelta(days=SEQ_LENGTH * 4) # *4 de folga para feriados
+    # Busca com margem maior (5 dias) para garantir fins de semana/feriados
+    end_fetch = target_dt + pd.Timedelta(days=5) 
+    start_fetch = target_dt - pd.Timedelta(days=SEQ_LENGTH * 2 + 10) 
 
     dados = obtemDadosHistoricos(command.ticker, start_fetch.date().isoformat(), end_fetch.date().isoformat())
     
-    # Validação básica
     if dados.empty:
-         return None, None, None, {"error": f"Nenhum dado encontrado para o ticker {command.ticker}"}
+         return None, None, None, {"error": f"Nenhum dado encontrado para {command.ticker}"}
 
     data_processed = build_features_estrategia2(dados)
 
-    # 2. Tentar localizar o índice do dia alvo nos dados baixados
-    # Converter índice para datetime normalizado (sem hora) para comparar
-    if isinstance(data_processed.index, pd.DatetimeIndex):
-        data_processed.index = data_processed.index.normalize()
+    # CRIAMOS UMA LISTA DE STRINGS PARA BUSCA SEGURA
+    # Isso ignora completamente se o índice é UTC, Naive, etc.
+    datas_disponiveis = [d.strftime('%Y-%m-%d') for d in data_processed.index]
     
-    # Lógica de seleção
-    if target_dt in data_processed.index:
-        # CENÁRIO A: O dia alvo existe no histórico (Backtest ou dia fechou)
-        idx_target = data_processed.index.get_loc(target_dt)
+    actual_price = None
+    seq = None
+
+    print(f"-++-+-+ { command.target_date.strftime('%Y-%m-%d') }, -+-+-+ : {datas_disponiveis}")
+
+    if command.target_date.strftime("%Y-%m-%d") in datas_disponiveis:
+        # CENÁRIO A: Encontramos a data exata (Dia útil passado/presente fechado)
+        # Pegamos a posição inteira (índice numérico) onde a string bate
+        print("+-+-+- Entrei na condicional do command.target_date in datas_disponiveis")
+
+        idx_target = datas_disponiveis.index(target_str)
         
-        # O valor real é o fechamento deste dia (Coluna 0 = Close na sua estratégia)
+        # Pega o valor real (Coluna 0 = Close)
         actual_price = float(data_processed.iloc[idx_target, 0])
         
-        # A sequência de entrada são os 30 dias ANTERIORES ao alvo
+        # Pega a sequência dos 30 dias ANTERIORES a esse índice
         seq = data_processed.iloc[idx_target - SEQ_LENGTH : idx_target].to_numpy()
         
     else:
-        # CENÁRIO B: O dia alvo é futuro (ou hoje e pregão não fechou/não atualizou)
-        # Pegamos os últimos 30 dias disponíveis para prever o "amanhã"
+        # CENÁRIO B: Data futura ou dia sem pregão
+        # Pegamos os últimos 30 dias disponíveis do dataframe
         actual_price = None
         seq = data_processed.iloc[-SEQ_LENGTH:].to_numpy()
 
-    # Validação de tamanho da sequência
+    # Validação
     if len(seq) < SEQ_LENGTH:
         return None, None, None, {
-            "error": f"Histórico insuficiente antes de {command.target_date}. Temos {len(seq)} dias, precisamos de {SEQ_LENGTH}."
+            "error": f"Histórico insuficiente. Temos {len(seq)}, precisamos de {SEQ_LENGTH}."
         }
 
-    # 3. Preparação do Tensor (Igual ao anterior)
+    # Montagem do Tensor
     X = seq.reshape(1, SEQ_LENGTH, seq.shape[1])
     
-    # Normalização
     X_reshaped = X.reshape(-1, 1)
     scaler = MinMaxScaler(feature_range=(-1, 1))
-    scaler.fit(X_reshaped) # Fitamos na entrada
+    scaler.fit(X_reshaped)
     X_norm = scaler.transform(X_reshaped).reshape(X.shape)
 
     X_test = torch.from_numpy(X_norm).float().to(DEVICE).unsqueeze(-1)
 
     return X_test, scaler, actual_price, None
 
-def executar_previsao(model, dados_tensor):
+def run_forecast(model, dados_tensor):
     """
     Retorna uma tupla (resultado, erro).
     Se houver erro, 'resultado' é None e 'erro' contém o dict pronto para retorno.
@@ -252,4 +271,68 @@ def executar_previsao(model, dados_tensor):
         return None, error_response
 
 
+def generate_recursive_forecast(
+    model, 
+    scaler, 
+    last_window_tensor: torch.Tensor, 
+    last_val_norm: float,
+    last_date: any, 
+    target_end_date: str
+) -> Tuple[List[any], List[float]]:
     
+    # 1. Normalização de datas para evitar erro de Timezone/Horas
+    dt_last = pd.to_datetime(last_date).normalize() # Zera as horas
+    dt_target = pd.to_datetime(target_end_date).normalize()
+    
+    # DEBUG: Verifique isso no seu console
+    print(f"--- DEBUG FORECAST ---")
+    print(f"Última Data Histórica: {dt_last}")
+    print(f"Data Alvo Final: {dt_target}")
+
+    if dt_target <= dt_last:
+        print("AVISO: Data alvo é anterior ou igual à última data. Retornando vazio.")
+        return [], []
+
+    # 2. Preparação da Janela Inicial
+    # Pega o tensor [30, 1] ou [30, 1, 1]
+    current_window = last_window_tensor.unsqueeze(0) # Adiciona batch -> [1, 30, 1]
+    
+    if current_window.dim() == 4:
+        current_window = current_window.squeeze(-1) # Garante [1, 30, 1]
+
+    # --- PASSO CRUCIAL: ATUALIZAR A JANELA PARA O FUTURO ---
+    # A 'current_window' atual serve para prever o dia 'dt_last'.
+    # Para prever 'dt_last + 1', precisamos inserir o valor de 'dt_last' na janela.
+    
+    new_point = torch.tensor([[[last_val_norm]]], device=current_window.device, dtype=torch.float32)
+    # Remove o dia mais velho (index 0) e insere o último valor conhecido no final
+    current_window = torch.cat((current_window[:, 1:, :], new_point), dim=1)
+    # -------------------------------------------------------
+
+    # 3. Geração de Datas Futuras (Dias Úteis)
+    dates_range = pd.date_range(start=dt_last + pd.Timedelta(days=1), end=dt_target, freq='B')
+    print(f"Gerando previsão para {len(dates_range)} dias futuros...")
+
+    future_dates = []
+    future_preds = []
+
+    model.eval()
+    
+    for future_date in dates_range:
+        with torch.no_grad():
+            # Inferência
+            pred_norm_tensor = model(current_window)
+            pred_norm = pred_norm_tensor.item()
+            
+            # Desnormalização para salvar
+            # scaler.inverse_transform espera array 2D
+            pred_real = scaler.inverse_transform([[pred_norm]])[0][0]
+            
+            future_dates.append(future_date)
+            future_preds.append(pred_real)
+            
+            # Atualiza Janela para o próximo dia
+            new_point_loop = torch.tensor([[[pred_norm]]], device=current_window.device, dtype=torch.float32)
+            current_window = torch.cat((current_window[:, 1:, :], new_point_loop), dim=1)
+
+    return future_dates, future_preds
