@@ -1,7 +1,10 @@
 import io
 import pickle
 import torch
+import logging
 from app.domain.services.avaluation_model_service import SimpleLSTM
+
+logger = logging.getLogger(__name__)
 
 # Sua classe customizada para converter de GPU para CPU
 class CpuUnpickler(pickle.Unpickler):
@@ -25,20 +28,20 @@ def carregar_modelo_global(model_path: str = None):
     """
     global _modelo_carregado
     arquivo_modelo = model_path
-    
+
     try:
-        print(f"Carregando modelo {arquivo_modelo} para a memória...")
+        logger.info("Carregando modelo %s para a memória...", arquivo_modelo)
         with open(arquivo_modelo, 'rb') as f:
             _modelo_carregado = CpuUnpickler(f).load()
 
         if hasattr(_modelo_carregado, 'eval'):
             _modelo_carregado.eval()
             
-        print("Modelo carregado com sucesso!")
+        logger.info("Modelo carregado com sucesso!")
         return _modelo_carregado
 
     except Exception as e:
-        print(f"FATAL: Erro ao carregar modelo: {e}")
+        logger.exception("FATAL: Erro ao carregar modelo: %s", e)
         return None
 
 def obter_modelo():

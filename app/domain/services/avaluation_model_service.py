@@ -7,6 +7,9 @@ import numpy as np
 from sklearn.preprocessing import MinMaxScaler
 import yfinance as yf
 import traceback
+import logging
+
+logger = logging.getLogger(__name__)
 from app.schemas.ticker_request import TickerRequestBetweenDates, TickerRequest
 from typing import Tuple, List
 from app.config.settings import get_settings
@@ -113,7 +116,7 @@ def getX_testY_test_Sliding_Window(command: TickerRequestBetweenDates):
     idx_corte = idx_start_user - settings.SEQ_LENGTH
     
     if idx_corte < 0:
-        print("AVISO: Histórico insuficiente para cobrir a janela completa antes da data inicial.")
+        logger.warning("Histórico insuficiente para cobrir a janela completa antes da data inicial. Ajustando corte para 0.")
         idx_corte = 0
 
     # Cortamos o dataframe para começar exatamente onde precisamos
@@ -225,11 +228,11 @@ def run_forecast(model, dados_tensor):
             
     except Exception as e:
         tb = traceback.format_exc()
-        print(f"Erro interno no PyTorch: {e}")
+        logger.exception("Erro interno no PyTorch: %s", e)
         
         error_response = {
-            "error": "Erro durante inferência", 
-            "details": str(e), 
+            "error": "Erro durante inferência",
+            "details": str(e),
             "trace": tb
         }
 
@@ -250,7 +253,7 @@ def generate_recursive_forecast(
     dt_target = pd.to_datetime(target_end_date).normalize()
 
     if dt_target <= dt_last:
-        print("AVISO: Data alvo é anterior ou igual à última data. Retornando vazio.")
+        logger.warning("Data alvo (%s) é anterior ou igual à última data (%s). Retornando vazio.", dt_target, dt_last)
         return [], []
 
     # 2. Preparação da Janela Inicial

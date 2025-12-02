@@ -3,6 +3,9 @@ import yfinance as yf
 from functools import wraps, lru_cache
 from fastapi import HTTPException
 from datetime import date
+import logging
+
+logger = logging.getLogger(__name__)
 
 # 1. Função auxiliar com CACHE. 
 # O Python lembrará dos últimos 1024 tickers verificados para não travar a API.
@@ -86,7 +89,7 @@ def validate_date_rangefunc(func):
         except Exception as e:
             if isinstance(e, HTTPException): raise e
             # Em produção, logar o erro do yfinance mas talvez não bloquear o usuário
-            print(f"Aviso: Não foi possível validar histórico no YF: {e}")
+            logger.warning("Aviso: Não foi possível validar histórico no YF: %s", e)
 
         return func(req, *args, **kwargs)
     return wrapper
@@ -114,13 +117,14 @@ def validate_has_date(func):
         try:
             hist_check = yf.download(ticker, start=lookback_date, end=target_date, progress=False, auto_adjust=True)
             if len(hist_check) < 30:
-                 raise HTTPException(
-                    status_code=400, 
+                raise HTTPException(
+                    status_code=400,
                     detail=f"Sem histórico suficiente para prever o dia {target_date}. O ticker {ticker} parece não ter dados suficientes neste período passado."
                 )
         except Exception as e:
-             if isinstance(e, HTTPException): raise e
-             print(f"Aviso YF: {e}")
+            if isinstance(e, HTTPException):
+                raise e
+            logger.warning("Aviso YF: %s", e)
 
         return func(req, *args, **kwargs)
     return wrapper
