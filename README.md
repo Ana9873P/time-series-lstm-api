@@ -175,8 +175,3 @@ DD_ENV=prod
 docker compose down dd-agent
 docker rm -f dd-agent
 ```
-
-Se preferir não usar `docker-compose`, você também pode executar o comando `docker run` original (veja README) ou instalar o Agent diretamente no host usando o script de instalação do Datadog — esse script é usado para instalações em VM/host, não para containers gerenciados.
-
-Se quiser, eu posso: (a) atualizar o `docker-compose.yml` para expor `8126` e adicionar `DD_APM_*` por padrão, (b) criar um `.env.example` no repositório, ou (c) fornecer instruções de instrumentação para sua aplicação Python/Java/Node. Qual prefere?
-
