@@ -1,3 +1,10 @@
+'''
+Este módulo orquestra a preparação de dados, execução da inferência e montagem da resposta final para duas operações: 
+previsão entre datas (process_ticker) e previsão para um dia específico (process_ticker_single_day). 
+Delega a lógica pesada (download/transformação de dados, inferência, geração recursiva) para funções na camada de serviços e 
+usa PredictionResponseBuilder para montar o dicionário de resposta final.
+'''
+
 from app.domain.services.avaluation_model_service import run_forecast, generate_recursive_forecast, obtemX_para_um_dia, getX_testY_test_Sliding_Window
 from app.schemas.ticker_request import TickerRequestBetweenDates, TickerRequest
 from app.domain.results.prediction_response_builder import PredictionResponseBuilder
