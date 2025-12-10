@@ -5,3 +5,7 @@ scikit-learn
 pandas
 yfinance
 torch
+datadog
+ddtrace
+python-json-logger
+statsd

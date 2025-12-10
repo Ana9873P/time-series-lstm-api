@@ -4,6 +4,7 @@ from app.routers import api as api_router
 from fastapi import FastAPI
 from app.config.settings import get_settings
 from app.config.logging import configure_logging
+from app.config.datadog_config import configure_datadog
 import logging
 
 settings = get_settings()
@@ -14,6 +15,9 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     # Configure logging early
     configure_logging()
+    
+    # Configure Datadog monitoring
+    configure_datadog()
 
     # --- STARTUP ---
     logger.info("[Startup] Carregando modelo LSTM na memória...")

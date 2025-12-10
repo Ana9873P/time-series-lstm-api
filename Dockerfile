@@ -7,4 +7,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000"]
+# Adicionar início do tracer Datadog
+ENV DD_TRACE_STARTUP_LOGS=true
+ENV DD_TRACE_DEBUG=false
+
+CMD ["ddtrace-run", "uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000"]
